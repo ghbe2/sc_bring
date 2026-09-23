@@ -119,7 +119,7 @@ const CONFIG = {
     guard:   { name: '檻番',   glyph: '番', color: '#7d9be0', hpBase: 24, hpPerFloor: 2,   atkBase: 4 /*SPEC 5*/, atkPerFloor: 0.5 /*SPEC 1*/, speed: 0.5, weight: 2 },
   },
   spawn: { enemies: [3, 5] /*SPEC [4,7]*/, candy: [3, 5], placeTries: 200 },
-  view: { maxWidth: 704, logLines: 3, exploredAlpha: 0.4, glyphScale: 0.82, hpBarH: 2 },
+  view: { cols: 13, rows: 11, maxWidth: 520, logLines: 3, exploredAlpha: 0.4, glyphScale: 0.82, hpBarH: 2 },
   colors: { bg: '#0b0910', floor: '#2b2536', corridor: '#221d2b', wall: '#4b3f5e', stairs: '#9ad8ff',
             feralFrame: '#ff4d4d', weakFrame: '#ffd24d', enemyHp: '#ff6b6b' },
   chars: [
@@ -269,6 +269,7 @@ function startRun(ids) {
   nextFloor();
   showScreen('run');
   log(`${active().def.name}たちは檻の中へ降りた。`, 'info');
+  log('敵のいる方向へ動くと攻撃する。', 'info');
   render();
 }
 function active() {
@@ -679,8 +680,8 @@ const cv = $('cv'), ctx = cv.getContext('2d');
 let tile = 0;
 function resizeCanvas() {
   const W = Math.min($('mapwrap').clientWidth || window.innerWidth, C.view.maxWidth);
-  tile = W / C.map.w;
-  const H = tile * C.map.h;
+  tile = W / C.view.cols;
+  const H = tile * C.view.rows;
   const dpr = window.devicePixelRatio || 1;
   cv.style.width = W + 'px'; cv.style.height = H + 'px';
   cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
@@ -693,10 +694,14 @@ function glyphAt(x, y, g, color) {
 function drawMap() {
   if (!run || !run.map) return;
   const m = run.map, K = C.colors;
-  ctx.fillStyle = K.bg; ctx.fillRect(0, 0, m.w * tile, m.h * tile);
+  ctx.fillStyle = K.bg; ctx.fillRect(0, 0, C.view.cols * tile, C.view.rows * tile);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = `700 ${Math.floor(tile * C.view.glyphScale)}px system-ui, sans-serif`;
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+  // カメラ: プレイヤーを常に画面中央に置く
+  const cx = run.px - (C.view.cols >> 1), cy = run.py - (C.view.rows >> 1);
+  ctx.save();
+  ctx.translate(-cx * tile, -cy * tile);
+  for (let y = Math.max(0, cy); y < Math.min(m.h, cy + C.view.rows); y++) for (let x = Math.max(0, cx); x < Math.min(m.w, cx + C.view.cols); x++) {
     const i = y * m.w + x;
     if (!run.explored[i]) continue;
     ctx.globalAlpha = run.vis[i] ? 1 : C.view.exploredAlpha;
@@ -726,6 +731,7 @@ function drawMap() {
     ctx.fillRect(run.px * tile + 0.5, run.py * tile + 0.5, tile - 1, tile - 1);
     glyphAt(run.px, run.py, a.def.glyph, C.colors.bg);
   }
+  ctx.restore();
 }
 
 // ============================================================
