@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>しゅがけブリング</title>
+<style>
+:root{--bg:#120f17;--panel:#1c1824;--line:#2f2839;--text:#ece6f3;--dim:#8d839b;--accent:#f2a6c8;--danger:#ff5d5d;--good:#7fe0a8;--warn:#ffc95d;--info:#8fc8ff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic UI",sans-serif;font-size:14px}
+body{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#app{max-width:720px;margin:0 auto;padding:8px 8px 16px}
+.hidden{display:none!important}
+button{font:inherit;color:inherit;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;cursor:pointer}
+button:disabled{opacity:.35;cursor:default}
+button:active:not(:disabled){filter:brightness(1.5)}
+h1{font-size:22px;margin:8px 0 2px;letter-spacing:.08em}
+.sub{color:var(--dim);font-size:12px;margin-bottom:12px}
+
+/* base */
+.roster{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.rrow{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:var(--panel);border:1px solid var(--line);text-align:left;width:100%}
+.rrow.sel{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.glyph{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-weight:700;color:#120f17;flex:none}
+.rname{flex:1}
+.badge{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid currentColor}
+.st-roster{color:var(--good)}.st-party{color:var(--accent)}.st-feral{color:var(--danger)}.st-dead{color:var(--dim)}
+.wmin{font-size:11px;color:var(--dim);width:64px;text-align:right}
+.bigbtn{width:100%;padding:14px;font-size:16px;font-weight:700;background:var(--accent);color:#120f17;border:none;margin-top:6px}
+.smallbtn{font-size:12px;color:var(--dim);background:none;border:none;margin-top:14px}
+.note{color:var(--dim);font-size:12px;line-height:1.6}
+
+/* run */
+.hud{display:flex;justify-content:space-between;align-items:baseline;padding:2px 2px 6px;color:var(--dim);font-size:12px}
+.hud b{color:var(--text);font-size:15px}
+#mapwrap{width:100%;display:flex;justify-content:center}
+canvas{display:block;border-radius:6px;background:#0b0910}
+#log{margin:6px 0;min-height:57px;font-size:12.5px;line-height:19px;padding:0 4px}
+#log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--dim)}
+#log div:last-child{color:var(--text)}
+.l-good{color:var(--good)!important}.l-bad{color:var(--danger)!important}.l-warn{color:var(--warn)!important}.l-dead{color:#b98cff!important}.l-info{color:var(--info)!important}
+#party{display:flex;flex-direction:column;gap:4px}
+.prow{display:flex;align-items:center;gap:8px;padding:5px 8px;width:100%;text-align:left;border-radius:8px}
+.prow.active{border-color:var(--accent);background:#2a2133}
+.prow.empty{opacity:.25}
+.pname{width:72px;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bars{flex:1;display:flex;flex-direction:column;gap:3px}
+.bar{position:relative;height:9px;background:#0b0910;border-radius:4px;overflow:hidden}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:4px}
+.bar .hp{background:var(--good)}
+.bar .w{background:var(--warn)}
+.bar .w.high{background:var(--danger)}
+.bar .min{background:repeating-linear-gradient(45deg,#5a4a6a 0 3px,#3a3046 3px 6px);z-index:1}
+.nums{width:74px;font-size:10.5px;color:var(--dim);text-align:right;line-height:12px}
+.nums .hi{color:var(--danger);font-weight:700}
+#bag{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin:8px 0 6px}
+.chip{height:36px;padding:0;font-size:17px;display:flex;align-items:center;justify-content:center}
+.chip.sel{border-color:var(--accent);background:#3a2a40}
+.chip.none{opacity:.2}
+#bagname{font-size:11px;color:var(--dim);height:14px;margin:-2px 2px 4px}
+.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+#pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:300px;margin:0 auto}
+#pad button{height:52px;font-size:20px}
+#pad .wait{font-size:14px}
+
+/* overlay */
+#overlay{position:fixed;inset:0;background:rgba(10,8,14,.82);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;max-width:360px;width:100%;text-align:center}
+.card h2{margin:0 0 10px;font-size:20px}
+.card p{color:var(--dim);line-height:1.7;margin:0 0 14px;font-size:13px}
+</style>
+</head>
+<body>
+<div id="app">
+  <section id="base"></section>
+  <section id="run" class="hidden">
+    <div class="hud"><span><b id="floor">B1</b> / <span id="floorMax"></span>階</span><span id="turn"></span></div>
+    <div id="mapwrap"><canvas id="cv"></canvas></div>
+    <div id="log"></div>
+    <div id="party"></div>
+    <div id="bag"></div>
+    <div id="bagname"></div>
+    <div class="actions">
+      <button id="bSwap">交代</button>
+      <button id="bEat">食べる</button>
+      <button id="bGive">与える</button>
+      <button id="bDrop">置く</button>
+    </div>
+    <div id="pad"></div>
+  </section>
+</div>
+<div id="overlay" class="hidden"><div class="card" id="ovcard"></div></div>
+
+<script>
+'use strict';
+// ============================================================
+// CONFIG — 数値はすべてここ（SPEC.md の表の値）
+// /*SPEC x*/ は「遊べる」ように仮調整した値。元の仕様値を併記（NOTES.md 参照）
+// ============================================================
+const CONFIG = {
+  title: 'しゅがけブリング',
+  map: { w: 40, h: 24, rooms: [4, 8], roomW: [3, 8], roomH: [3, 6], floors: 20,
+         placeTries: 400, genTries: 60, minRooms: 2, extraLinks: [1, 2], elbowFlip: 0.5 },
+  player: { hpMax: 30, baseAtk: 5, def: 0, regenEvery: 5 /*SPEC 10*/, regenAmount: 1, partyMax: 3, bagMax: 8, atkPerW: 10 },
+  wild: { max: 100, perHit: 3, benchDecayEvery: 5, benchDecay: 1, highAt: 80, feralAt: 100, minStep: 20, minCap: 60 },
+  hit: 0.9,
+  dmg: { spread: 1, min: 1 },
+  candy: {
+    sugar:   { name: '角砂糖',     glyph: '▫', color: '#f4f1ea', w: 5,  hp: 3,  weight: 6 },
+    drop:    { name: '飴',         glyph: '◉', color: '#ff8fb8', w: 15, hp: 8,  weight: 3 },
+    cake:    { name: 'ケーキ',     glyph: '▲', color: '#ffd27a', w: 40, hp: 20, weight: 1 },
+    special: { name: '特上ケーキ', glyph: '★', color: '#ffe95c', full: true,    weight: 0 },
+  },
+  feral: { hpBase: 20 /*SPEC 40*/, hpPerFloor: 2, atkBase: 3 /*SPEC 6*/, atkPerFloor: 0.5 /*SPEC 0.8*/, speed: 1, weakRatio: 0.3,
+           guaranteeFloors: 3, spawnRate: 0.3, perFloor: 1 },
+  enemies: {
+    dog:     { name: '野犬',   glyph: '犬', color: '#d49a5a', hpBase: 8,  hpPerFloor: 1,   atkBase: 2 /*SPEC 3*/, atkPerFloor: 0.3 /*SPEC 0.5*/, speed: 2, pack: [1, 2] /*SPEC [2,3]*/, weight: 3 },
+    poacher: { name: '密猟者', glyph: '密', color: '#a9b0b8', hpBase: 14, hpPerFloor: 1.5, atkBase: 3 /*SPEC 4*/, atkPerFloor: 0.4 /*SPEC 0.7*/, speed: 1,   stealRate: 0.3, fleeTurns: 1, weight: 3 },
+    guard:   { name: '檻番',   glyph: '番', color: '#7d9be0', hpBase: 24, hpPerFloor: 2,   atkBase: 4 /*SPEC 5*/, atkPerFloor: 0.5 /*SPEC 1*/, speed: 0.5, weight: 2 },
+  },
+  spawn: { enemies: [3, 5] /*SPEC [4,7]*/, candy: [3, 5], placeTries: 200 },
+  view: { maxWidth: 704, logLines: 3, exploredAlpha: 0.4, glyphScale: 0.82, hpBarH: 2 },
+  colors: { bg: '#0b0910', floor: '#2b2536', corridor: '#221d2b', wall: '#4b3f5e', stairs: '#9ad8ff',
+            feralFrame: '#ff4d4d', weakFrame: '#ffd24d', enemyHp: '#ff6b6b' },
+  chars: [
+    { id: 'gessha',   name: '月謝',     feralName: '月謝',     glyph: '月', color: '#e8c547', wildUp: 1.0, wildDown: 1.0 },
+    { id: 'kona',     name: 'こな',     feralName: 'こな',     glyph: 'こ', color: '#f2a6c8', wildUp: 0.8, wildDown: 0.8 },
+    { id: 'riu',      name: 'リウ',     feralName: 'リウ',     glyph: 'リ', color: '#7fd1c7', wildUp: 1.2, wildDown: 1.2 },
+    { id: 'aune',     name: 'アウネ',   feralName: 'アウネ',   glyph: 'ア', color: '#b59cf0', wildUp: 1.0, wildDown: 1.3 },
+    { id: 'ou',       name: '依鳥オウ', feralName: '本体オウ', glyph: 'オ', color: '#ff9a3c', wildUp: 1.3, wildDown: 1.0 },
+    { id: 'amime',    name: 'アミメ',   feralName: 'アミメ',   glyph: 'ミ', color: '#e5d08a', wildUp: 1.2, wildDown: 0.8 },
+    { id: 'torotoro', name: 'トロトロ', feralName: 'トロトロ', glyph: 'ト', color: '#8fd16a', wildUp: 0.8, wildDown: 1.2 },
+    { id: 'maan',     name: 'mAAn',     feralName: 'mAAn',     glyph: 'm',  color: '#dcdcdc', wildUp: 1.0, wildDown: 1.0 },
+  ],
+  starters: ['gessha', 'kona', 'riu', 'aune'],
+  saveKey: 'sc_bring_v1',
+};
+const C = CONFIG;
+
+// ============================================================
+// util
+// ============================================================
+const rand = Math.random;
+const randInt = (a, b) => a + Math.floor(rand() * (b - a + 1));
+const pick = arr => arr[Math.floor(rand() * arr.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const cheb = (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+const DIRS = [[-1,-1],[0,-1],[1,-1],[-1,0],[1,0],[-1,1],[0,1],[1,1]];
+const $ = id => document.getElementById(id);
+const charDef = id => C.chars.find(c => c.id === id);
+function weighted(table) {
+  const keys = Object.keys(table).filter(k => table[k].weight > 0);
+  let t = rand() * keys.reduce((s, k) => s + table[k].weight, 0);
+  for (const k of keys) { t -= table[k].weight; if (t < 0) return k; }
+  return keys[keys.length - 1];
+}
+
+// ============================================================
+// save
+// ============================================================
+let save = null;
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(C.saveKey));
+    if (s && s.chars) {
+      // ラン途中で閉じた場合: 同行者は拠点に戻す
+      for (const id in s.chars) if (s.chars[id].status === 'party') s.chars[id].status = 'roster';
+      return s;
+    }
+  } catch (e) {}
+  return null;
+}
+function writeSave() {
+  try { localStorage.setItem(C.saveKey, JSON.stringify(save)); } catch (e) {}
+}
+function newSave(starterId) {
+  const chars = {};
+  for (const c of C.chars) chars[c.id] = { status: c.id === starterId ? 'roster' : 'feral', wildMin: 0 };
+  return { chars, clears: 0, deepest: 0 };
+}
+
+// ============================================================
+// map generation
+// ============================================================
+const T_WALL = 0, T_FLOOR = 1, T_CORR = 2;
+function genFloor() {
+  for (let i = 0; i < C.map.genTries; i++) { const m = tryGen(); if (m) return m; }
+  throw new Error('map gen failed');
+}
+function tryGen() {
+  const { w, h } = C.map;
+  const tiles = new Uint8Array(w * h);
+  const rooms = [];
+  const target = randInt(...C.map.rooms);
+  for (let i = 0; i < C.map.placeTries && rooms.length < target; i++) {
+    const rw = randInt(...C.map.roomW), rh = randInt(...C.map.roomH);
+    const x = randInt(1, w - rw - 1), y = randInt(1, h - rh - 1);
+    // 重なり・接触は再抽選（壁1マス以上空ける）
+    if (rooms.some(o => x < o.x + o.w + 1 && x + rw + 1 > o.x && y < o.y + o.h + 1 && y + rh + 1 > o.y)) continue;
+    rooms.push({ x, y, w: rw, h: rh });
+  }
+  if (rooms.length < C.map.minRooms) return null;
+  const roomIdx = new Int8Array(w * h).fill(-1);
+  rooms.forEach((r, ri) => {
+    for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) {
+      tiles[yy * w + xx] = T_FLOOR; roomIdx[yy * w + xx] = ri;
+    }
+  });
+  const sorted = rooms.map((r, i) => i).sort((a, b) => rooms[a].x - rooms[b].x);
+  for (let i = 0; i + 1 < sorted.length; i++) carveL(tiles, rooms[sorted[i]], rooms[sorted[i + 1]]);
+  const extra = randInt(...C.map.extraLinks);
+  for (let i = 0; i < extra; i++) {
+    const a = pick(rooms), b = pick(rooms);
+    if (a !== b) carveL(tiles, a, b);
+  }
+  const startRoom = Math.floor(rand() * rooms.length);
+  const others = rooms.map((r, i) => i).filter(i => i !== startRoom);
+  const stairsRoom = pick(others);
+  const sp = randomRoomTile(rooms[startRoom]);
+  const st = randomRoomTile(rooms[stairsRoom]);
+  const map = { w, h, tiles, rooms, roomIdx, startRoom, start: sp, stairs: st };
+  // BFS で階段到達を確認
+  const dist = distField(map, st.x, st.y, null);
+  if (dist[sp.y * w + sp.x] < 0) return null;
+  return map;
+}
+function carveL(tiles, a, b) {
+  const ax = a.x + (a.w >> 1), ay = a.y + (a.h >> 1);
+  const bx = b.x + (b.w >> 1), by = b.y + (b.h >> 1);
+  const set = (x, y) => { const i = y * C.map.w + x; if (tiles[i] === T_WALL) tiles[i] = T_CORR; };
+  const hline = (x1, x2, y) => { for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) set(x, y); };
+  const vline = (y1, y2, x) => { for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) set(x, y); };
+  if (rand() < C.map.elbowFlip) { hline(ax, bx, ay); vline(ay, by, bx); }
+  else { vline(ay, by, ax); hline(ax, bx, by); }
+}
+function randomRoomTile(r) { return { x: randInt(r.x, r.x + r.w - 1), y: randInt(r.y, r.y + r.h - 1) }; }
+const walkable = (m, x, y) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.tiles[y * m.w + x] !== T_WALL;
+const roomAt = (m, x, y) => m.roomIdx[y * m.w + x];
+// 目標から全域への歩数（8方向）。allow(x,y) で通行制限
+function distField(m, tx, ty, allow) {
+  const dist = new Int16Array(m.w * m.h).fill(-1);
+  const q = [tx, ty]; dist[ty * m.w + tx] = 0;
+  for (let qi = 0; qi < q.length; qi += 2) {
+    const x = q[qi], y = q[qi + 1], d = dist[y * m.w + x];
+    for (const [dx, dy] of DIRS) {
+      const nx = x + dx, ny = y + dy;
+      if (!walkable(m, nx, ny)) continue;
+      if (allow && !allow(nx, ny)) continue;
+      const ni = ny * m.w + nx;
+      if (dist[ni] >= 0) continue;
+      dist[ni] = d + 1; q.push(nx, ny);
+    }
+  }
+  return dist;
+}
+
+// ============================================================
+// run state
+// ============================================================
+let run = null;
+function startRun(ids) {
+  for (const id of ids) save.chars[id].status = 'party';
+  writeSave();
+  run = {
+    floor: 0, turn: 0, active: 0, bag: [], sel: -1, log: [], over: false,
+    lost: new Set(),
+    party: ids.map(id => ({ id, hp: C.player.hpMax, w: save.chars[id].wildMin, high: false })),
+  };
+  nextFloor();
+  showScreen('run');
+  log(`${active().def.name}たちは檻の中へ降りた。`, 'info');
+  render();
+}
+function active() {
+  const m = run.party[run.active];
+  return m ? Object.assign(m, { def: charDef(m.id) }) : null;
+}
+function atkOf(m) { return C.player.baseAtk + Math.floor(m.w / C.player.atkPerW); }
+
+function nextFloor() {
+  run.floor++;
+  if (run.floor > save.deepest) save.deepest = run.floor;
+  const map = genFloor();
+  run.map = map;
+  run.px = map.start.x; run.py = map.start.y;
+  run.enemies = []; run.items = [];
+  run.vis = new Uint8Array(map.w * map.h);
+  run.explored = new Uint8Array(map.w * map.h);
+  populate();
+  updateFov();
+  if (run.floor > 1) log(`B${run.floor}へ降りた。`, 'info');
+}
+function occupied(x, y) {
+  if (x === run.px && y === run.py) return true;
+  return run.enemies.some(e => e.x === x && e.y === y);
+}
+function freeRoomTile(ri, needNoItem) {
+  const m = run.map, r = m.rooms[ri];
+  for (let i = 0; i < C.spawn.placeTries; i++) {
+    const p = randomRoomTile(r);
+    if (occupied(p.x, p.y)) continue;
+    if (p.x === m.stairs.x && p.y === m.stairs.y) continue;
+    if (needNoItem && itemAt(p.x, p.y)) continue;
+    return p;
+  }
+  return null;
+}
+function nonStartRoom() {
+  const m = run.map;
+  return pick(m.rooms.map((r, i) => i).filter(i => i !== m.startRoom));
+}
+function makeEnemy(type, x, y, ri) {
+  const d = C.enemies[type], f = run.floor;
+  const hp = Math.round(d.hpBase + f * d.hpPerFloor);
+  return { type, name: d.name, glyph: d.glyph, color: d.color, x, y, hp, hpMax: hp,
+           atk: d.atkBase + f * d.atkPerFloor, speed: d.speed, acc: 0, room: ri, flee: 0 };
+}
+function populate() {
+  const m = run.map;
+  // 一般敵
+  let n = randInt(...C.spawn.enemies);
+  while (n > 0) {
+    const type = weighted(C.enemies);
+    const ri = nonStartRoom();
+    const p = freeRoomTile(ri);
+    if (!p) { n--; continue; }
+    if (type === 'dog') {
+      const size = Math.min(n, randInt(...C.enemies.dog.pack));
+      run.enemies.push(makeEnemy('dog', p.x, p.y, ri));
+      let placed = 1;
+      for (const [dx, dy] of DIRS) {
+        if (placed >= size) break;
+        const x = p.x + dx, y = p.y + dy;
+        if (walkable(m, x, y) && !occupied(x, y)) { run.enemies.push(makeEnemy('dog', x, y, ri)); placed++; }
+      }
+      n -= placed;
+    } else {
+      run.enemies.push(makeEnemy(type, p.x, p.y, ri));
+      n--;
+    }
+  }
+  // 野性化アマル
+  const pool = C.chars.filter(c => save.chars[c.id].status === 'feral' && !run.lost.has(c.id));
+  const want = run.floor <= C.feral.guaranteeFloors || rand() < C.feral.spawnRate;
+  if (pool.length && want) {
+    for (let i = 0; i < C.feral.perFloor && pool.length; i++) {
+      const c = pool.splice(Math.floor(rand() * pool.length), 1)[0];
+      const ri = nonStartRoom();
+      const p = freeRoomTile(ri);
+      if (!p) continue;
+      const hp = Math.round(C.feral.hpBase + run.floor * C.feral.hpPerFloor);
+      run.enemies.push({ type: 'feral', charId: c.id, name: `${c.feralName}(野性)`, glyph: c.glyph, color: c.color,
+        x: p.x, y: p.y, hp, hpMax: hp, atk: C.feral.atkBase + run.floor * C.feral.atkPerFloor,
+        speed: C.feral.speed, acc: 0, room: ri, flee: 0, weakShown: false });
+    }
+  }
+  // 糖
+  const nc = randInt(...C.spawn.candy);
+  for (let i = 0; i < nc; i++) {
+    const ri = Math.floor(rand() * m.rooms.length);
+    const p = freeRoomTile(ri, true);
+    if (p && !(p.x === run.px && p.y === run.py)) run.items.push({ x: p.x, y: p.y, kind: weighted(C.candy) });
+  }
+}
+const itemAt = (x, y) => run.items.find(it => it.x === x && it.y === y);
+const enemyAt = (x, y) => run.enemies.find(e => e.x === x && e.y === y);
+
+function updateFov() {
+  const m = run.map;
+  run.vis.fill(0);
+  const mark = (x, y) => { if (x >= 0 && y >= 0 && x < m.w && y < m.h) { run.vis[y * m.w + x] = 1; run.explored[y * m.w + x] = 1; } };
+  const ri = roomAt(m, run.px, run.py);
+  if (ri >= 0) {
+    const r = m.rooms[ri];
+    for (let y = r.y - 1; y <= r.y + r.h; y++) for (let x = r.x - 1; x <= r.x + r.w; x++) mark(x, y);
+  }
+  for (const [dx, dy] of DIRS) mark(run.px + dx, run.py + dy);
+  mark(run.px, run.py);
+}
+const isVis = (x, y) => run.vis[y * run.map.w + x] === 1;
+
+// ============================================================
+// log
+// ============================================================
+function log(text, cls) {
+  run.log.push({ text, cls: cls || '' });
+  if (run.log.length > C.view.logLines) run.log.splice(0, run.log.length - C.view.logLines);
+}
+
+// ============================================================
+// player actions — 各関数は「ターンを消費したら true」
+// ============================================================
+function act(fn) {
+  if (!run || run.over || !$('overlay').classList.contains('hidden')) return;
+  const used = fn();
+  if (used === 'descended') { endTurn(false); }
+  else if (used) { endTurn(true); }
+  render();
+}
+function tryMove(dx, dy) {
+  const nx = run.px + dx, ny = run.py + dy;
+  const e = enemyAt(nx, ny);
+  if (e) { playerAttack(e); return true; }
+  if (!walkable(run.map, nx, ny)) return false;
+  run.px = nx; run.py = ny;
+  const it = itemAt(nx, ny);
+  if (it) {
+    if (run.bag.length < C.player.bagMax) {
+      run.items.splice(run.items.indexOf(it), 1);
+      run.bag.push(it.kind);
+      log(`${C.candy[it.kind].name}を拾った。`);
+    } else log(`${C.candy[it.kind].name}がある。もう持てない。`);
+  }
+  if (nx === run.map.stairs.x && ny === run.map.stairs.y) {
+    if (run.floor >= C.map.floors) { clearRun(); return false; }
+    nextFloor();
+    return 'descended';
+  }
+  return true;
+}
+function playerAttack(e) {
+  const m = active();
+  if (rand() < C.hit) {
+    const dmg = Math.max(C.dmg.min, atkOf(m) - C.player.def + randInt(-C.dmg.spread, C.dmg.spread));
+    e.hp -= dmg;
+    m.w = Math.min(C.wild.max, m.w + C.wild.perHit * m.def.wildUp);
+    log(`${m.def.name}→${e.name} ${dmg}ダメージ（W${Math.floor(m.w)}）`);
+    if (!m.high && m.w >= C.wild.highAt) { m.high = true; log(`${m.def.name}の息が荒い。W${Math.floor(m.w)}`, 'warn'); }
+    if (e.hp <= 0) killEnemy(e);
+    else if (e.type === 'feral' && isWeak(e) && !e.weakShown) { e.weakShown = true; log(`${e.name}は弱っている。`, 'warn'); }
+  } else {
+    log(`${m.def.name}の攻撃は外れた。`);
+  }
+}
+const isWeak = e => e.hp <= e.hpMax * C.feral.weakRatio;
+function killEnemy(e) {
+  run.enemies.splice(run.enemies.indexOf(e), 1);
+  if (e.type === 'feral') {
+    save.chars[e.charId].status = 'dead';
+    writeSave();
+    log(`${e.name}は動かなくなった。特上ケーキが落ちた。`, 'dead');
+    dropItemNear(e.x, e.y, 'special');
+  } else {
+    log(`${e.name}を倒した。`);
+  }
+}
+function dropItemNear(x, y, kind) {
+  const cand = [[0, 0], ...DIRS];
+  for (const [dx, dy] of cand) {
+    const nx = x + dx, ny = y + dy;
+    if (walkable(run.map, nx, ny) && !itemAt(nx, ny) && !(nx === run.map.stairs.x && ny === run.map.stairs.y)) {
+      run.items.push({ x: nx, y: ny, kind }); return;
+    }
+  }
+}
+function eat() {
+  if (run.sel < 0) return false;
+  const kind = run.bag[run.sel], c = C.candy[kind], m = active(), s = save.chars[m.id];
+  run.bag.splice(run.sel, 1); fixSel();
+  if (c.full) {
+    s.wildMin = 0; m.w = 0; m.hp = C.player.hpMax; writeSave();
+    log(`${m.def.name}は${c.name}を食べた。檻の跡が消えた。`, 'good');
+  } else {
+    const before = m.w;
+    m.w = Math.max(s.wildMin, m.w - c.w);
+    m.hp = Math.min(C.player.hpMax, m.hp + c.hp);
+    log(`${m.def.name}は${c.name}を食べた（W${Math.floor(before)}→${Math.floor(m.w)}）`);
+  }
+  if (m.w < C.wild.highAt) m.high = false;
+  return true;
+}
+function adjacentFeral() {
+  return run.enemies.find(e => e.type === 'feral' && cheb(e.x, e.y, run.px, run.py) <= 1);
+}
+function give() {
+  const e = adjacentFeral();
+  if (run.sel < 0 || !e) return false;
+  const kind = run.bag[run.sel], c = C.candy[kind];
+  run.bag.splice(run.sel, 1); fixSel();
+  if (isWeak(e)) { recruit(e, !!c.full); }
+  else {
+    e.hp = c.full ? e.hpMax : Math.min(e.hpMax, e.hp + c.hp);
+    log(`${e.name}は${c.name}を奪うように食べた。`);
+  }
+  return true;
+}
+function recruit(e, special) {
+  run.enemies.splice(run.enemies.indexOf(e), 1);
+  const s = save.chars[e.charId], d = charDef(e.charId);
+  if (special) s.wildMin = 0;
+  if (run.party.length < C.player.partyMax) {
+    s.status = 'party';
+    run.party.push({ id: d.id, hp: C.player.hpMax, w: s.wildMin, high: false });
+    log(`${d.name}が二本の足で立った。仲間になった。`, 'good');
+  } else {
+    s.status = 'roster';
+    log(`${d.name}が二本の足で立った。拠点へ帰した。`, 'good');
+  }
+  writeSave();
+}
+function dropCandy() {
+  if (run.sel < 0) return false;
+  if (itemAt(run.px, run.py) || (run.px === run.map.stairs.x && run.py === run.map.stairs.y)) { log('ここには置けない。'); return false; }
+  const kind = run.bag[run.sel];
+  run.bag.splice(run.sel, 1); fixSel();
+  run.items.push({ x: run.px, y: run.py, kind });
+  log(`${C.candy[kind].name}を置いた。`);
+  return true;
+}
+function swapTo(i) {
+  if (i === run.active || !run.party[i]) return false;
+  const from = active().def.name;
+  run.active = i;
+  log(`${from}→${active().def.name}に交代。`, 'info');
+  return true;
+}
+function swapNext() {
+  if (run.party.length < 2) return false;
+  return swapTo((run.active + 1) % run.party.length);
+}
+function fixSel() {
+  if (run.sel >= run.bag.length) run.sel = run.bag.length - 1;
+}
+
+// ============================================================
+// enemies
+// ============================================================
+function enemySees(e) {
+  const m = run.map;
+  if (cheb(e.x, e.y, run.px, run.py) <= 1) return true;
+  const a = roomAt(m, e.x, e.y);
+  return a >= 0 && a === roomAt(m, run.px, run.py);
+}
+function stepToward(e, tx, ty, allow) {
+  const m = run.map;
+  const dist = distField(m, tx, ty, allow);
+  let best = null, bd = dist[e.y * m.w + e.x];
+  if (bd < 0) bd = Infinity;
+  for (const [dx, dy] of DIRS) {
+    const nx = e.x + dx, ny = e.y + dy;
+    if (!walkable(m, nx, ny) || occupied(nx, ny)) continue;
+    const d = dist[ny * m.w + nx];
+    if (d >= 0 && d < bd) { bd = d; best = [nx, ny]; }
+  }
+  if (best) { e.x = best[0]; e.y = best[1]; }
+}
+function stepRandom(e) {
+  const opts = DIRS.map(([dx, dy]) => [e.x + dx, e.y + dy]).filter(([x, y]) => walkable(run.map, x, y) && !occupied(x, y));
+  if (opts.length) { const [x, y] = pick(opts); e.x = x; e.y = y; }
+}
+function stepAway(e) {
+  let best = null, bd = cheb(e.x, e.y, run.px, run.py);
+  for (const [dx, dy] of DIRS) {
+    const nx = e.x + dx, ny = e.y + dy;
+    if (!walkable(run.map, nx, ny) || occupied(nx, ny)) continue;
+    const d = cheb(nx, ny, run.px, run.py);
+    if (d > bd) { bd = d; best = [nx, ny]; }
+  }
+  if (best) { e.x = best[0]; e.y = best[1]; }
+}
+function feralCandyTarget(e) {
+  const m = run.map, ri = roomAt(m, e.x, e.y);
+  let best = null, bd = Infinity;
+  for (const it of run.items) {
+    const seen = cheb(it.x, it.y, e.x, e.y) <= 1 || (ri >= 0 && roomAt(m, it.x, it.y) === ri);
+    if (!seen) continue;
+    const d = cheb(it.x, it.y, e.x, e.y);
+    if (d < bd) { bd = d; best = it; }
+  }
+  return best;
+}
+function enemyAttack(e) {
+  const m = active();
+  if (rand() < C.hit) {
+    const dmg = Math.max(C.dmg.min, Math.round(e.atk) - C.player.def + randInt(-C.dmg.spread, C.dmg.spread));
+    m.hp -= dmg;
+    log(`${e.name}→${m.def.name} ${dmg}ダメージ`, 'bad');
+  } else log(`${e.name}の攻撃は外れた。`);
+}
+function enemyAct(e) {
+  if (e.flee > 0) { e.flee--; stepAway(e); return; }
+  if (e.type === 'feral') {
+    const it = feralCandyTarget(e);
+    if (it) {
+      if (it.x === e.x && it.y === e.y) {
+        run.items.splice(run.items.indexOf(it), 1);
+        if (isVis(e.x, e.y)) log(`${e.name}は${C.candy[it.kind].name}に夢中だ。`);
+      } else stepToward(e, it.x, it.y, null);
+      return;
+    }
+  }
+  const adj = cheb(e.x, e.y, run.px, run.py) <= 1;
+  if (adj) {
+    if (e.type === 'poacher' && run.bag.length && rand() < C.enemies.poacher.stealRate) {
+      const i = Math.floor(rand() * run.bag.length);
+      const k = run.bag.splice(i, 1)[0]; fixSel();
+      e.flee = C.enemies.poacher.fleeTurns;
+      log(`${e.name}に${C.candy[k].name}を盗まれた！`, 'bad');
+      return;
+    }
+    enemyAttack(e);
+    return;
+  }
+  if (e.type === 'guard') {
+    // 部屋固定。侵入者がいれば部屋の中だけで寄る
+    if (enemySees(e)) stepToward(e, run.px, run.py, (x, y) => roomAt(run.map, x, y) === e.room || (x === run.px && y === run.py));
+    return;
+  }
+  if (enemySees(e)) stepToward(e, run.px, run.py, null);
+  else stepRandom(e);
+}
+
+// ============================================================
+// turn
+// ============================================================
+function endTurn(enemiesAct) {
+  if (enemiesAct) {
+    for (const e of run.enemies.slice()) {
+      if (!run.enemies.includes(e)) continue;
+      e.acc += e.speed;
+      while (e.acc >= 1) { e.acc -= 1; enemyAct(e); }
+    }
+  }
+  run.turn++;
+  if (run.turn % C.player.regenEvery === 0)
+    for (const m of run.party) if (m.hp > 0) m.hp = Math.min(C.player.hpMax, m.hp + C.player.regenAmount);
+  if (run.turn % C.wild.benchDecayEvery === 0)
+    run.party.forEach((m, i) => {
+      if (i === run.active) return;
+      m.w = Math.max(save.chars[m.id].wildMin, m.w - C.wild.benchDecay * charDef(m.id).wildDown);
+      if (m.w < C.wild.highAt) m.high = false;
+    });
+  checkActive();
+  if (!run.over) updateFov();
+}
+function checkActive() {
+  // HP0 → W100 → 自動交代。1体ずつ
+  for (;;) {
+    const m = active();
+    if (!m) return;
+    let reason = null;
+    if (m.hp <= 0) reason = 'hp';
+    else if (m.w >= C.wild.feralAt) reason = 'wild';
+    if (!reason) return;
+    const s = save.chars[m.id];
+    s.status = 'feral';
+    s.wildMin = Math.min(C.wild.minCap, s.wildMin + C.wild.minStep);
+    run.lost.add(m.id);
+    run.party.splice(run.active, 1);
+    writeSave();
+    if (reason === 'hp') log(`${m.def.name}は倒れ、檻に呑まれた。`, 'dead');
+    else log(`${m.def.name}は四つ足になり、走り去った。`, 'dead');
+    if (!run.party.length) { gameOver(); return; }
+    run.active = 0;
+    log(`${active().def.name}が前に出た。`, 'info');
+  }
+}
+function gameOver() {
+  run.over = true;
+  if (run.floor > save.deepest) save.deepest = run.floor;
+  writeSave();
+  render();
+  showOverlay('ラン終了', `B${run.floor}で同行者が全員いなくなった。<br>檻の中で、また会うことになる。`, '拠点へ');
+}
+function clearRun() {
+  run.over = true;
+  for (const m of run.party) save.chars[m.id].status = 'roster';
+  save.clears++;
+  save.deepest = Math.max(save.deepest, C.map.floors);
+  writeSave();
+  const names = run.party.map(m => charDef(m.id).name).join('・');
+  showOverlay('帰還', `${C.map.floors}階の底から戻った。<br>${names}<br>クリア ${save.clears} 回目`, '拠点へ');
+}
+
+// ============================================================
+// render: map
+// ============================================================
+const cv = $('cv'), ctx = cv.getContext('2d');
+let tile = 0;
+function resizeCanvas() {
+  const W = Math.min($('mapwrap').clientWidth || window.innerWidth, C.view.maxWidth);
+  tile = W / C.map.w;
+  const H = tile * C.map.h;
+  const dpr = window.devicePixelRatio || 1;
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+function glyphAt(x, y, g, color) {
+  ctx.fillStyle = color;
+  ctx.fillText(g, (x + 0.5) * tile, (y + 0.55) * tile);
+}
+function drawMap() {
+  if (!run || !run.map) return;
+  const m = run.map, K = C.colors;
+  ctx.fillStyle = K.bg; ctx.fillRect(0, 0, m.w * tile, m.h * tile);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `700 ${Math.floor(tile * C.view.glyphScale)}px system-ui, sans-serif`;
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    const i = y * m.w + x;
+    if (!run.explored[i]) continue;
+    ctx.globalAlpha = run.vis[i] ? 1 : C.view.exploredAlpha;
+    const t = m.tiles[i];
+    ctx.fillStyle = t === T_WALL ? K.wall : t === T_FLOOR ? K.floor : K.corridor;
+    ctx.fillRect(x * tile, y * tile, tile + 0.5, tile + 0.5);
+    if (x === m.stairs.x && y === m.stairs.y) glyphAt(x, y, '▼', K.stairs);
+  }
+  ctx.globalAlpha = 1;
+  for (const it of run.items) if (isVis(it.x, it.y)) glyphAt(it.x, it.y, C.candy[it.kind].glyph, C.candy[it.kind].color);
+  for (const e of run.enemies) {
+    if (!isVis(e.x, e.y)) continue;
+    if (e.type === 'feral') {
+      ctx.strokeStyle = isWeak(e) ? K.weakFrame : K.feralFrame;
+      ctx.lineWidth = Math.max(1, tile * 0.12);
+      ctx.strokeRect(e.x * tile + 1, e.y * tile + 1, tile - 2, tile - 2);
+    }
+    glyphAt(e.x, e.y, e.glyph, e.color);
+    if (e.hp < e.hpMax) {
+      ctx.fillStyle = K.enemyHp;
+      ctx.fillRect(e.x * tile, (e.y + 1) * tile - C.view.hpBarH, tile * e.hp / e.hpMax, C.view.hpBarH);
+    }
+  }
+  const a = active();
+  if (a) {
+    ctx.fillStyle = a.def.color;
+    ctx.fillRect(run.px * tile + 0.5, run.py * tile + 0.5, tile - 1, tile - 1);
+    glyphAt(run.px, run.py, a.def.glyph, C.colors.bg);
+  }
+}
+
+// ============================================================
+// render: UI
+// ============================================================
+function render() {
+  if (!run) return;
+  $('floor').textContent = `B${run.floor}`;
+  $('floorMax').textContent = C.map.floors;
+  $('turn').textContent = `ターン ${run.turn}`;
+  drawMap();
+  $('log').innerHTML = run.log.map(l => `<div class="l-${l.cls}">${l.text}</div>`).join('');
+  // party
+  let ph = '';
+  for (let i = 0; i < C.player.partyMax; i++) {
+    const m = run.party[i];
+    if (!m) { ph += `<button class="prow empty" disabled><div class="glyph" style="background:#333"></div><div class="pname">―</div><div class="bars"></div></button>`; continue; }
+    const d = charDef(m.id), s = save.chars[m.id];
+    const hpP = clamp(m.hp / C.player.hpMax, 0, 1) * 100;
+    const wP = clamp(m.w / C.wild.max, 0, 1) * 100, minP = s.wildMin / C.wild.max * 100;
+    const hi = m.w >= C.wild.highAt;
+    ph += `<button class="prow ${i === run.active ? 'active' : ''}" data-i="${i}">
+      <div class="glyph" style="background:${d.color}">${d.glyph}</div>
+      <div class="pname">${d.name}</div>
+      <div class="bars">
+        <div class="bar"><i class="hp" style="width:${hpP}%"></i></div>
+        <div class="bar"><i class="w ${hi ? 'high' : ''}" style="width:${wP}%"></i><i class="min" style="width:${minP}%"></i></div>
+      </div>
+      <div class="nums">HP ${Math.max(0, m.hp)}/${C.player.hpMax}<br><span class="${hi ? 'hi' : ''}">W ${Math.floor(m.w)}</span> ATK${atkOf(m)}</div>
+    </button>`;
+  }
+  $('party').innerHTML = ph;
+  // bag
+  let bh = '';
+  for (let i = 0; i < C.player.bagMax; i++) {
+    const k = run.bag[i];
+    if (k) bh += `<button class="chip ${i === run.sel ? 'sel' : ''}" data-b="${i}" style="color:${C.candy[k].color}">${C.candy[k].glyph}</button>`;
+    else bh += `<button class="chip none" disabled>·</button>`;
+  }
+  $('bag').innerHTML = bh;
+  if (run.sel >= 0 && run.bag[run.sel]) {
+    const c = C.candy[run.bag[run.sel]];
+    $('bagname').textContent = c.full ? `${c.name}：W全減・HP全快・野性の下限を0に` : `${c.name}：W-${c.w} / HP+${c.hp}`;
+  } else $('bagname').textContent = run.bag.length ? '糖をタップして選ぶ' : '糖を持っていない';
+  const hasSel = run.sel >= 0 && !!run.bag[run.sel];
+  const fe = adjacentFeral();
+  $('bEat').disabled = !hasSel;
+  $('bDrop').disabled = !hasSel;
+  $('bGive').disabled = !(hasSel && fe);
+  $('bGive').textContent = fe && isWeak(fe) ? '与える★' : '与える';
+  $('bSwap').disabled = run.party.length < 2;
+}
+
+// ============================================================
+// screens
+// ============================================================
+function showScreen(name) {
+  $('base').classList.toggle('hidden', name !== 'base');
+  $('run').classList.toggle('hidden', name !== 'run');
+  if (name === 'run') { resizeCanvas(); render(); }
+}
+function showOverlay(title, body, btn) {
+  $('ovcard').innerHTML = `<h2>${title}</h2><p>${body}</p><button class="bigbtn" id="ovbtn">${btn}</button>`;
+  $('overlay').classList.remove('hidden');
+  $('ovbtn').onclick = () => { $('overlay').classList.add('hidden'); run = null; renderBase(); showScreen('base'); };
+}
+const STATUS_LABEL = { party: '同行', roster: '拠点', feral: '野性', dead: '死亡' };
+let baseSel = [];
+function renderBase(autofill = true) {
+  const el = $('base');
+  if (!save) {
+    el.innerHTML = `<h1>${C.title}</h1><div class="sub">檻の中で獣になった仲間を、糖で人に戻して連れ帰る。</div>
+      <div class="note">最初の1人を選ぶ。残りの7人は、檻の中にいる。</div>
+      <div class="roster">${C.starters.map(id => { const d = charDef(id); return `
+        <button class="rrow" data-start="${id}"><div class="glyph" style="background:${d.color}">${d.glyph}</div>
+        <div class="rname">${d.name}</div><div class="wmin">上がり${d.wildUp} / 下がり${d.wildDown}</div></button>`; }).join('')}</div>`;
+    el.querySelectorAll('[data-start]').forEach(b => b.onclick = () => { save = newSave(b.dataset.start); writeSave(); baseSel = [b.dataset.start]; renderBase(); });
+    return;
+  }
+  const rosterIds = C.chars.filter(c => save.chars[c.id].status === 'roster').map(c => c.id);
+  baseSel = baseSel.filter(id => rosterIds.includes(id));
+  if (autofill && !baseSel.length) baseSel = rosterIds.slice(0, C.player.partyMax);
+  el.innerHTML = `<h1>${C.title}</h1>
+    <div class="sub">拠点　クリア ${save.clears}回 ／ 最深 B${save.deepest}</div>
+    <div class="note">連れていく仲間を${C.player.partyMax}人まで選ぶ。縞模様は野性の下限（飲まれるたび+${C.wild.minStep}）。</div>
+    <div class="roster">${C.chars.map(c => {
+      const s = save.chars[c.id];
+      const can = s.status === 'roster';
+      const sel = baseSel.includes(c.id);
+      const name = s.status === 'feral' ? c.feralName : c.name;
+      return `<button class="rrow ${sel ? 'sel' : ''}" data-id="${c.id}" ${can ? '' : 'disabled'}>
+        <div class="glyph" style="background:${s.status === 'dead' ? '#444' : c.color}">${c.glyph}</div>
+        <div class="rname">${name}</div>
+        <span class="badge st-${s.status}">${STATUS_LABEL[s.status]}</span>
+        <div class="wmin">下限 W${s.wildMin}</div></button>`;
+    }).join('')}</div>
+    ${rosterIds.length ? `<button class="bigbtn" id="go" ${baseSel.length ? '' : 'disabled'}>出発（${baseSel.length}人）</button>`
+      : `<div class="note">拠点に誰も残っていない。</div>`}
+    <button class="smallbtn" id="reset">記録を消して最初から</button>`;
+  el.querySelectorAll('[data-id]').forEach(b => b.onclick = () => {
+    const id = b.dataset.id;
+    if (baseSel.includes(id)) baseSel = baseSel.filter(x => x !== id);
+    else if (baseSel.length < C.player.partyMax) baseSel.push(id);
+    renderBase(false);
+  });
+  if ($('go')) $('go').onclick = () => { if (baseSel.length) startRun(baseSel.slice()); };
+  $('reset').onclick = () => {
+    if (confirm('名簿・クリア回数をすべて消します。よろしいですか？')) {
+      try { localStorage.removeItem(C.saveKey); } catch (e) {}
+      save = null; baseSel = []; renderBase();
+    }
+  };
+}
+// ============================================================
+// input
+// ============================================================
+const PAD = [[-1,-1,'↖'],[0,-1,'↑'],[1,-1,'↗'],[-1,0,'←'],[0,0,'待つ'],[1,0,'→'],[-1,1,'↙'],[0,1,'↓'],[1,1,'↘']];
+$('pad').innerHTML = PAD.map(([dx, dy, l], i) => `<button data-p="${i}" class="${dx || dy ? '' : 'wait'}">${l}</button>`).join('');
+$('pad').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-p]'); if (!b) return;
+  const [dx, dy] = PAD[+b.dataset.p];
+  act(() => (dx || dy) ? tryMove(dx, dy) : true);
+});
+$('party').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-i]'); if (!b) return;
+  act(() => swapTo(+b.dataset.i));
+});
+$('bag').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-b]'); if (!b || !run) return;
+  const i = +b.dataset.b;
+  run.sel = run.sel === i ? -1 : i;
+  render();
+});
+$('bSwap').onclick = () => act(swapNext);
+$('bEat').onclick = () => act(eat);
+$('bGive').onclick = () => act(give);
+$('bDrop').onclick = () => act(dropCandy);
+const KEYMAP = {
+  ArrowUp: [0,-1], ArrowDown: [0,1], ArrowLeft: [-1,0], ArrowRight: [1,0],
+  Home: [-1,-1], PageUp: [1,-1], End: [-1,1], PageDown: [1,1], Clear: [0,0],
+  '8': [0,-1], '2': [0,1], '4': [-1,0], '6': [1,0], '7': [-1,-1], '9': [1,-1], '1': [-1,1], '3': [1,1], '5': [0,0], '.': [0,0],
+};
+document.addEventListener('keydown', ev => {
+  if (!run || $('run').classList.contains('hidden')) return;
+  const d = KEYMAP[ev.key];
+  if (d) { ev.preventDefault(); act(() => (d[0] || d[1]) ? tryMove(d[0], d[1]) : true); return; }
+  if (ev.key === 's') act(swapNext);
+  else if (ev.key === 'i') { if (run.bag.length) { run.sel = (run.sel + 1) % run.bag.length; render(); } }
+  else if (ev.key === 'e') act(eat);
+  else if (ev.key === 'g') act(give);
+  else if (ev.key === 'd') act(dropCandy);
+});
+window.addEventListener('resize', () => { if (run) { resizeCanvas(); render(); } });
+
+// ============================================================
+// boot
+// ============================================================
+save = loadSave();
+if (save) writeSave();
+renderBase();
+showScreen('base');
+</script>
+</body>
+</html>
