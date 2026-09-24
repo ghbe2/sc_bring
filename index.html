@@ -25,7 +25,7 @@ h1{font-size:22px;margin:8px 0 2px;letter-spacing:.08em}
 .rname{flex:1}
 .badge{font-size:11px;padding:2px 7px;border-radius:99px;border:1px solid currentColor}
 .st-roster{color:var(--good)}.st-party{color:var(--accent)}.st-feral{color:var(--danger)}.st-dead{color:var(--dim)}
-.wmin{font-size:11px;color:var(--dim);width:64px;text-align:right}
+.wmin{font-size:11px;color:var(--dim);min-width:64px;text-align:right;white-space:nowrap}
 .bigbtn{width:100%;padding:14px;font-size:16px;font-weight:700;background:var(--accent);color:#120f17;border:none;margin-top:6px}
 .smallbtn{font-size:12px;color:var(--dim);background:none;border:none;margin-top:14px}
 .note{color:var(--dim);font-size:12px;line-height:1.6}
@@ -33,6 +33,8 @@ h1{font-size:22px;margin:8px 0 2px;letter-spacing:.08em}
 /* run */
 .hud{display:flex;justify-content:space-between;align-items:baseline;padding:2px 2px 6px;color:var(--dim);font-size:12px}
 .hud b{color:var(--text);font-size:15px}
+#bMap{margin-left:10px;padding:3px 10px;font-size:12px}
+#bMap.on{border-color:var(--accent);color:var(--accent)}
 #mapwrap{width:100%;display:flex;justify-content:center}
 canvas{display:block;border-radius:6px;background:#0b0910}
 #log{margin:6px 0;min-height:57px;font-size:12.5px;line-height:19px;padding:0 4px}
@@ -74,7 +76,7 @@ canvas{display:block;border-radius:6px;background:#0b0910}
 <div id="app">
   <section id="base"></section>
   <section id="run" class="hidden">
-    <div class="hud"><span><b id="floor">B1</b> / <span id="floorMax"></span>階</span><span id="turn"></span></div>
+    <div class="hud"><span><b id="floor">B1</b> / <span id="floorMax"></span>階</span><span><span id="turn"></span><button id="bMap">地図</button></span></div>
     <div id="mapwrap"><canvas id="cv"></canvas></div>
     <div id="log"></div>
     <div id="party"></div>
@@ -125,8 +127,9 @@ const CONFIG = {
   // giveUp ターン進めなければ諦める
   ai: { memory: 3, giveUp: 4 },
   spawn: { enemies: [3, 5] /*SPEC [4,7]*/, candy: [3, 5], placeTries: 200 },
-  view: { cols: 13, rows: 11, maxWidth: 520, logLines: 3, exploredAlpha: 0.4, glyphScale: 0.82, hpBarH: 2, faceTip: 0.78, faceBase: 0.52, faceHalf: 0.16 },
-  colors: { bg: '#0b0910', floor: '#2b2536', corridor: '#221d2b', wall: '#4b3f5e', stairs: '#9ad8ff',
+  view: { cols: 13, rows: 11, maxWidth: 520, logLines: 3, dimAlpha: 0.45, mapAlpha: 0.55, mapDot: 0.8, glyphScale: 0.82, hpBarH: 2, faceTip: 0.78, faceBase: 0.52, faceHalf: 0.16 },
+  colors: { bg: '#0b0910', floor: '#4a3f5e', corridor: '#3a3149', stairs: '#9ad8ff',
+            mapShade: 'rgba(8,6,12,0.45)', mapTile: '#8fb4ff', mapEnemy: '#ff5d5d', mapItem: '#ffd24d',
             face: '#ffffff', feralFrame: '#ff4d4d', weakFrame: '#ffd24d', enemyHp: '#ff6b6b' },
   chars: [
     { id: 'gessha',   name: '月謝',     feralName: '月謝',     glyph: '月', color: '#e8c547', wildUp: 1.0, wildDown: 1.0 },
@@ -309,6 +312,14 @@ function distField(m, tx, ty, allow) {
 // run state
 // ============================================================
 let run = null;
+// 画面設定（見た目の好みだけ。ブラウザに覚えさせる）
+const UI_KEY = C.saveKey + '_ui';
+const ui = (() => { try { return Object.assign({ map: true }, JSON.parse(localStorage.getItem(UI_KEY))); } catch (e) { return { map: true }; } })();
+function toggleMap() {
+  ui.map = !ui.map;
+  try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch (e) {}
+  render();
+}
 function startRun(ids) {
   for (const id of ids) save.chars[id].status = 'party';
   writeSave();
@@ -790,11 +801,11 @@ function drawMap() {
   ctx.save();
   ctx.translate(-cx * tile, -cy * tile);
   for (let y = Math.max(0, cy); y < Math.min(m.h, cy + C.view.rows); y++) for (let x = Math.max(0, cx); x < Math.min(m.w, cx + C.view.cols); x++) {
-    const i = y * m.w + x;
-    if (!run.explored[i]) continue;
-    ctx.globalAlpha = run.vis[i] ? 1 : C.view.exploredAlpha;
-    const t = m.tiles[i];
-    ctx.fillStyle = t === T_WALL ? K.wall : t === T_FLOOR ? K.floor : K.corridor;
+    // 地形は画面内すべて描く（壁は描かない）。視界の外は暗く
+    const i = y * m.w + x, t = m.tiles[i];
+    if (t === T_WALL) continue;
+    ctx.globalAlpha = run.vis[i] ? 1 : C.view.dimAlpha;
+    ctx.fillStyle = t === T_FLOOR ? K.floor : K.corridor;
     ctx.fillRect(x * tile, y * tile, tile + 0.5, tile + 0.5);
     if (x === m.stairs.x && y === m.stairs.y) glyphAt(x, y, '▼', K.stairs);
   }
@@ -830,6 +841,31 @@ function drawMap() {
     ctx.fill();
   }
   ctx.restore();
+  if (ui.map) drawFloorMap();
+}
+// フロアマップ（重ね表示）: 行ったことのある場所だけ。自分・階段・見えている敵とアイテム
+function drawFloorMap() {
+  const m = run.map, K = C.colors;
+  const W = C.view.cols * tile, H = C.view.rows * tile;
+  const s = Math.min(W / m.w, H / m.h);
+  const ox = (W - s * m.w) / 2, oy = (H - s * m.h) / 2;
+  ctx.fillStyle = K.mapShade; ctx.fillRect(0, 0, W, H);
+  ctx.globalAlpha = C.view.mapAlpha;
+  ctx.fillStyle = K.mapTile;
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    const i = y * m.w + x;
+    if (run.explored[i] && m.tiles[i] !== T_WALL) ctx.fillRect(ox + x * s, oy + y * s, s + 0.3, s + 0.3);
+  }
+  ctx.globalAlpha = 1;
+  const dot = (x, y, color) => {
+    const r = s * C.view.mapDot / 2;
+    ctx.fillStyle = color;
+    ctx.fillRect(ox + (x + 0.5) * s - r, oy + (y + 0.5) * s - r, r * 2, r * 2);
+  };
+  if (run.explored[m.stairs.y * m.w + m.stairs.x]) dot(m.stairs.x, m.stairs.y, K.stairs);
+  for (const it of run.items) if (isVis(it.x, it.y)) dot(it.x, it.y, K.mapItem);
+  for (const e of run.enemies) if (isVis(e.x, e.y)) dot(e.x, e.y, K.mapEnemy);
+  dot(run.px, run.py, active() ? active().def.color : K.face);
 }
 
 // ============================================================
@@ -840,6 +876,7 @@ function render() {
   $('floor').textContent = `B${run.floor}`;
   $('floorMax').textContent = C.map.floors;
   $('turn').textContent = `ターン ${run.turn}`;
+  $('bMap').classList.toggle('on', ui.map);
   drawMap();
   $('log').innerHTML = run.log.map(l => `<div class="l-${l.cls}">${l.text}</div>`).join('');
   // party
@@ -964,6 +1001,7 @@ $('bag').addEventListener('click', ev => {
   render();
 });
 $('bWait').onclick = () => act(() => true);
+$('bMap').onclick = toggleMap;
 $('bSwap').onclick = () => act(swapNext);
 $('bEat').onclick = () => act(eat);
 $('bGive').onclick = () => act(give);
@@ -978,6 +1016,7 @@ document.addEventListener('keydown', ev => {
   const d = KEYMAP[ev.key];
   if (d) { ev.preventDefault(); act(() => (d[0] || d[1]) ? tryMove(d[0], d[1]) : true); return; }
   if (ev.key === 'a' || ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); act(attackCmd); }
+  else if (ev.key === 'm') toggleMap();
   else if (ev.key === 's') act(swapNext);
   else if (ev.key === 'i') { if (run.bag.length) { run.sel = (run.sel + 1) % run.bag.length; render(); } }
   else if (ev.key === 'e') act(eat);
