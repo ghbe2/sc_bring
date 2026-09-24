@@ -269,6 +269,18 @@ function connectRooms(m, a, b) {
 function randomRoomTile(r) { return { x: randInt(r.x, r.x + r.w - 1), y: randInt(r.y, r.y + r.h - 1) }; }
 const walkable = (m, x, y) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.tiles[y * m.w + x] !== T_WALL;
 const roomAt = (m, x, y) => m.roomIdx[y * m.w + x];
+// 視界の単位。部屋の中とその出入口は同じ部屋として見通せる。通路は -1（隣だけ見える）
+const sightRoom = (m, x, y) => {
+  const i = y * m.w + x;
+  if (m.roomIdx[i] >= 0) return m.roomIdx[i];
+  return m.tiles[i] !== T_WALL && m.ring[i] >= 0 ? m.ring[i] : -1;
+};
+// (ax,ay) にいる者から (bx,by) が見えるか。プレイヤーと敵で同じ規則
+const canSee = (m, ax, ay, bx, by) => {
+  if (cheb(ax, ay, bx, by) <= 1) return true;
+  const r = sightRoom(m, ax, ay);
+  return r >= 0 && r === sightRoom(m, bx, by);
+};
 // 1歩動けるか。斜めは両脇が壁でないときだけ（角をすり抜けない）
 const canStep = (m, x, y, dx, dy) => walkable(m, x + dx, y + dy) &&
   (!dx || !dy || (walkable(m, x + dx, y) && walkable(m, x, y + dy)));
@@ -406,7 +418,7 @@ function updateFov() {
   const m = run.map;
   run.vis.fill(0);
   const mark = (x, y) => { if (x >= 0 && y >= 0 && x < m.w && y < m.h) { run.vis[y * m.w + x] = 1; run.explored[y * m.w + x] = 1; } };
-  const ri = roomAt(m, run.px, run.py);
+  const ri = sightRoom(m, run.px, run.py);
   if (ri >= 0) {
     const r = m.rooms[ri];
     for (let y = r.y - 1; y <= r.y + r.h; y++) for (let x = r.x - 1; x <= r.x + r.w; x++) mark(x, y);
@@ -575,21 +587,22 @@ function fixSel() {
 // ============================================================
 function enemySees(e) {
   const m = run.map;
-  if (cheb(e.x, e.y, run.px, run.py) <= 1) return true;
-  const a = roomAt(m, e.x, e.y);
-  return a >= 0 && a === roomAt(m, run.px, run.py);
+  return canSee(m, e.x, e.y, run.px, run.py);
 }
 function stepToward(e, tx, ty, allow) {
   const m = run.map;
   const dist = distField(m, tx, ty, allow);
-  let best = null, bd = dist[e.y * m.w + e.x];
+  let best = null, bd = dist[e.y * m.w + e.x], bs = Infinity;
   if (bd < 0) bd = Infinity;
+  const base = bd;
   for (const [dx, dy] of DIRS) {
     const nx = e.x + dx, ny = e.y + dy;
     if (!canStep(m, e.x, e.y, dx, dy) || occupied(nx, ny)) continue;
     if (allow && !allow(nx, ny)) continue;
     const d = dist[ny * m.w + nx];
-    if (d >= 0 && d < bd) { bd = d; best = [nx, ny]; }
+    if (d < 0) continue;
+    const straight = Math.hypot(tx - nx, ty - ny);
+    if (d < bd || (best && d === bd && d < base && straight < bs)) { bd = d; bs = straight; best = [nx, ny]; }
   }
   if (best) { e.x = best[0]; e.y = best[1]; }
 }
@@ -608,10 +621,10 @@ function stepAway(e) {
   if (best) { e.x = best[0]; e.y = best[1]; }
 }
 function feralCandyTarget(e) {
-  const m = run.map, ri = roomAt(m, e.x, e.y);
+  const m = run.map;
   let best = null, bd = Infinity;
   for (const it of run.items) {
-    const seen = cheb(it.x, it.y, e.x, e.y) <= 1 || (ri >= 0 && roomAt(m, it.x, it.y) === ri);
+    const seen = canSee(m, e.x, e.y, it.x, it.y);
     if (!seen) continue;
     const d = cheb(it.x, it.y, e.x, e.y);
     if (d < bd) { bd = d; best = it; }
