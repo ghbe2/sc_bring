@@ -121,6 +121,9 @@ const CONFIG = {
     poacher: { name: '密猟者', glyph: '密', color: '#a9b0b8', hpBase: 14, hpPerFloor: 1.5, atkBase: 3 /*SPEC 4*/, atkPerFloor: 0.4 /*SPEC 0.7*/, speed: 1,   stealRate: 0.3, fleeTurns: 1, weight: 3 },
     guard:   { name: '檻番',   glyph: '番', color: '#7d9be0', hpBase: 24, hpPerFloor: 2,   atkBase: 4 /*SPEC 5*/, atkPerFloor: 0.5 /*SPEC 1*/, speed: 1 /*SPEC 0.5*/, weight: 2 },
   },
+  // 敵の追跡: 見失ってから memory ターンは気配で追い、その後は最後に見た場所へ。
+  // giveUp ターン進めなければ諦める
+  ai: { memory: 3, giveUp: 4 },
   spawn: { enemies: [3, 5] /*SPEC [4,7]*/, candy: [3, 5], placeTries: 200 },
   view: { cols: 13, rows: 11, maxWidth: 520, logLines: 3, exploredAlpha: 0.4, glyphScale: 0.82, hpBarH: 2, faceTip: 0.78, faceBase: 0.52, faceHalf: 0.16 },
   colors: { bg: '#0b0910', floor: '#2b2536', corridor: '#221d2b', wall: '#4b3f5e', stairs: '#9ad8ff',
@@ -606,10 +609,6 @@ function stepToward(e, tx, ty, allow) {
   }
   if (best) { e.x = best[0]; e.y = best[1]; }
 }
-function stepRandom(e) {
-  const opts = DIRS.filter(([dx, dy]) => canStep(run.map, e.x, e.y, dx, dy) && !occupied(e.x + dx, e.y + dy)).map(([dx, dy]) => [e.x + dx, e.y + dy]);
-  if (opts.length) { const [x, y] = pick(opts); e.x = x; e.y = y; }
-}
 function stepAway(e) {
   let best = null, bd = cheb(e.x, e.y, run.px, run.py);
   for (const [dx, dy] of DIRS) {
@@ -651,7 +650,7 @@ function enemyAct(e) {
       return;
     }
   }
-  if (enemySees(e)) e.alert = true;
+  updateTarget(e);
   if (canReach(e.x, e.y, run.px, run.py)) {
     if (e.type === 'poacher' && run.bag.length && rand() < C.enemies.poacher.stealRate) {
       const i = Math.floor(rand() * run.bag.length);
@@ -668,9 +667,36 @@ function enemyAct(e) {
     if (enemySees(e)) stepToward(e, run.px, run.py, (x, y) => roomAt(run.map, x, y) === e.room || (x === run.px && y === run.py));
     return;
   }
-  // 一度見つけたら見失わない
-  if (e.alert) stepToward(e, run.px, run.py, null);
-  else stepRandom(e);
+  if (e.target) {
+    // 発見中・追跡中: 目標へ。着いても見えなければ見失う
+    const moved = moveTo(e, e.target.x, e.target.y);
+    if (enemySees(e)) { updateTarget(e); return; }   // 動いた先で見えたら記憶を更新
+    const arrived = e.x === e.target.x && e.y === e.target.y;
+    if (!enemySees(e) && (arrived || (!moved && e.stuck >= C.ai.giveUp))) { e.target = null; e.stuck = 0; }
+  } else {
+    wander(e);
+    updateTarget(e);   // うろついた先で見つけることもある
+  }
+}
+// 見えていれば居場所を覚える。見失っても memory ターンは気配で追う
+function updateTarget(e) {
+  if (enemySees(e)) { e.target = { x: run.px, y: run.py }; e.memory = C.ai.memory; }
+  else if (e.target && e.memory > 0) { e.memory--; e.target = { x: run.px, y: run.py }; }
+}
+function moveTo(e, x, y) {
+  const bx = e.x, by = e.y;
+  stepToward(e, x, y, null);
+  const moved = e.x !== bx || e.y !== by;
+  e.stuck = moved ? 0 : (e.stuck || 0) + 1;
+  return moved;
+}
+// うろつき: どこかの部屋を目的地にして歩く
+function wander(e) {
+  const m = run.map;
+  if (!e.goal || (e.x === e.goal.x && e.y === e.goal.y) || e.stuck >= C.ai.giveUp) {
+    e.goal = randomRoomTile(pick(m.rooms)); e.stuck = 0;
+  }
+  moveTo(e, e.goal.x, e.goal.y);
 }
 
 // ============================================================
