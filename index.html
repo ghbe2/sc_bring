@@ -58,10 +58,10 @@ canvas{display:block;border-radius:6px;background:#0b0910}
 .chip.sel{border-color:var(--accent);background:#3a2a40}
 .chip.none{opacity:.2}
 #bagname{font-size:11px;color:var(--dim);height:14px;margin:-2px 2px 4px}
-.actions{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.actions{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:8px}
 #pad{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;max-width:300px;margin:0 auto}
 #pad button{height:52px;font-size:20px}
-#pad .wait{font-size:14px}
+#pad .atk{font-size:15px;font-weight:700;background:#4a2231;border-color:#7a3448;color:#ffd0dc}
 
 /* overlay */
 #overlay{position:fixed;inset:0;background:rgba(10,8,14,.82);display:flex;align-items:center;justify-content:center;padding:16px;z-index:10}
@@ -81,6 +81,7 @@ canvas{display:block;border-radius:6px;background:#0b0910}
     <div id="bag"></div>
     <div id="bagname"></div>
     <div class="actions">
+      <button id="bWait">待つ</button>
       <button id="bSwap">交代</button>
       <button id="bEat">食べる</button>
       <button id="bGive">与える</button>
@@ -100,8 +101,10 @@ canvas{display:block;border-radius:6px;background:#0b0910}
 const CONFIG = {
   title: 'しゅがけブリング',
   map: { w: 40, h: 24, rooms: [4, 8], roomW: [3, 8], roomH: [3, 6], floors: 20,
-         placeTries: 400, genTries: 60, minRooms: 2, extraLinks: [1, 2], elbowFlip: 0.5 },
-  player: { hpMax: 30, baseAtk: 5, def: 0, regenEvery: 5 /*SPEC 10*/, regenAmount: 1, partyMax: 3, bagMax: 8, atkPerW: 10 },
+         placeTries: 400, genTries: 60, minRooms: 3, extraLinks: [1, 2],
+         roomGap: 3,      // 部屋と部屋の間の壁の厚み（外周1＋通路1＋外周1）
+         edgeMargin: 2 }, // マップ端から部屋までの距離
+  player: { hpMax: 30, baseAtk: 5, def: 0, regenEvery: 2 /*SPEC 10*/, regenAmount: 1, partyMax: 3, bagMax: 8, atkPerW: 10 },
   wild: { max: 100, perHit: 3, benchDecayEvery: 5, benchDecay: 1, highAt: 80, feralAt: 100, minStep: 20, minCap: 60 },
   hit: 0.9,
   dmg: { spread: 1, min: 1 },
@@ -114,14 +117,14 @@ const CONFIG = {
   feral: { hpBase: 20 /*SPEC 40*/, hpPerFloor: 2, atkBase: 3 /*SPEC 6*/, atkPerFloor: 0.5 /*SPEC 0.8*/, speed: 1, weakRatio: 0.3,
            guaranteeFloors: 3, spawnRate: 0.3, perFloor: 1 },
   enemies: {
-    dog:     { name: '野犬',   glyph: '犬', color: '#d49a5a', hpBase: 8,  hpPerFloor: 1,   atkBase: 2 /*SPEC 3*/, atkPerFloor: 0.3 /*SPEC 0.5*/, speed: 2, pack: [1, 2] /*SPEC [2,3]*/, weight: 3 },
+    dog:     { name: '野犬',   glyph: '犬', color: '#d49a5a', hpBase: 8,  hpPerFloor: 1,   atkBase: 2 /*SPEC 3*/, atkPerFloor: 0.3 /*SPEC 0.5*/, speed: 1 /*SPEC 2*/, pack: [1, 2] /*SPEC [2,3]*/, weight: 3 },
     poacher: { name: '密猟者', glyph: '密', color: '#a9b0b8', hpBase: 14, hpPerFloor: 1.5, atkBase: 3 /*SPEC 4*/, atkPerFloor: 0.4 /*SPEC 0.7*/, speed: 1,   stealRate: 0.3, fleeTurns: 1, weight: 3 },
-    guard:   { name: '檻番',   glyph: '番', color: '#7d9be0', hpBase: 24, hpPerFloor: 2,   atkBase: 4 /*SPEC 5*/, atkPerFloor: 0.5 /*SPEC 1*/, speed: 0.5, weight: 2 },
+    guard:   { name: '檻番',   glyph: '番', color: '#7d9be0', hpBase: 24, hpPerFloor: 2,   atkBase: 4 /*SPEC 5*/, atkPerFloor: 0.5 /*SPEC 1*/, speed: 1 /*SPEC 0.5*/, weight: 2 },
   },
   spawn: { enemies: [3, 5] /*SPEC [4,7]*/, candy: [3, 5], placeTries: 200 },
-  view: { cols: 13, rows: 11, maxWidth: 520, logLines: 3, exploredAlpha: 0.4, glyphScale: 0.82, hpBarH: 2 },
+  view: { cols: 13, rows: 11, maxWidth: 520, logLines: 3, exploredAlpha: 0.4, glyphScale: 0.82, hpBarH: 2, faceTip: 0.78, faceBase: 0.52, faceHalf: 0.16 },
   colors: { bg: '#0b0910', floor: '#2b2536', corridor: '#221d2b', wall: '#4b3f5e', stairs: '#9ad8ff',
-            feralFrame: '#ff4d4d', weakFrame: '#ffd24d', enemyHp: '#ff6b6b' },
+            face: '#ffffff', feralFrame: '#ff4d4d', weakFrame: '#ffd24d', enemyHp: '#ff6b6b' },
   chars: [
     { id: 'gessha',   name: '月謝',     feralName: '月謝',     glyph: '月', color: '#e8c547', wildUp: 1.0, wildDown: 1.0 },
     { id: 'kona',     name: 'こな',     feralName: 'こな',     glyph: 'こ', color: '#f2a6c8', wildUp: 0.8, wildDown: 0.8 },
@@ -188,54 +191,87 @@ function genFloor() {
   throw new Error('map gen failed');
 }
 function tryGen() {
-  const { w, h } = C.map;
+  const { w, h, roomGap: gap, edgeMargin: em } = C.map;
   const tiles = new Uint8Array(w * h);
   const rooms = [];
   const target = randInt(...C.map.rooms);
   for (let i = 0; i < C.map.placeTries && rooms.length < target; i++) {
     const rw = randInt(...C.map.roomW), rh = randInt(...C.map.roomH);
-    const x = randInt(1, w - rw - 1), y = randInt(1, h - rh - 1);
-    // 重なり・接触は再抽選（壁1マス以上空ける）
-    if (rooms.some(o => x < o.x + o.w + 1 && x + rw + 1 > o.x && y < o.y + o.h + 1 && y + rh + 1 > o.y)) continue;
+    const x = randInt(em, w - rw - em), y = randInt(em, h - rh - em);
+    // 部屋同士は gap マス以上離す（通路が外周の壁に食い込まないように）
+    if (rooms.some(o => x < o.x + o.w + gap && x + rw + gap > o.x && y < o.y + o.h + gap && y + rh + gap > o.y)) continue;
     rooms.push({ x, y, w: rw, h: rh });
   }
   if (rooms.length < C.map.minRooms) return null;
   const roomIdx = new Int8Array(w * h).fill(-1);
+  const ring = new Int8Array(w * h).fill(-1);   // 部屋の外周（壁）。通路は出入口でしかここを通れない
   rooms.forEach((r, ri) => {
-    for (let yy = r.y; yy < r.y + r.h; yy++) for (let xx = r.x; xx < r.x + r.w; xx++) {
-      tiles[yy * w + xx] = T_FLOOR; roomIdx[yy * w + xx] = ri;
+    for (let yy = r.y - 1; yy <= r.y + r.h; yy++) for (let xx = r.x - 1; xx <= r.x + r.w; xx++) {
+      const inside = xx >= r.x && xx < r.x + r.w && yy >= r.y && yy < r.y + r.h;
+      if (inside) { tiles[yy * w + xx] = T_FLOOR; roomIdx[yy * w + xx] = ri; }
+      else ring[yy * w + xx] = ri;
     }
   });
-  const sorted = rooms.map((r, i) => i).sort((a, b) => rooms[a].x - rooms[b].x);
-  for (let i = 0; i + 1 < sorted.length; i++) carveL(tiles, rooms[sorted[i]], rooms[sorted[i + 1]]);
+  const map = { w, h, tiles, rooms, roomIdx, ring };
+  const sorted = rooms.map((r, i) => i).sort((p, q) => rooms[p].x - rooms[q].x);
+  for (let i = 0; i + 1 < sorted.length; i++) if (!connectRooms(map, sorted[i], sorted[i + 1])) return null;
   const extra = randInt(...C.map.extraLinks);
   for (let i = 0; i < extra; i++) {
-    const a = pick(rooms), b = pick(rooms);
-    if (a !== b) carveL(tiles, a, b);
+    const p = Math.floor(rand() * rooms.length), q = Math.floor(rand() * rooms.length);
+    if (p !== q) connectRooms(map, p, q);
   }
-  const startRoom = Math.floor(rand() * rooms.length);
-  const others = rooms.map((r, i) => i).filter(i => i !== startRoom);
-  const stairsRoom = pick(others);
-  const sp = randomRoomTile(rooms[startRoom]);
-  const st = randomRoomTile(rooms[stairsRoom]);
-  const map = { w, h, tiles, rooms, roomIdx, startRoom, start: sp, stairs: st };
+  map.startRoom = Math.floor(rand() * rooms.length);
+  const others = rooms.map((r, i) => i).filter(i => i !== map.startRoom);
+  map.start = randomRoomTile(rooms[map.startRoom]);
+  map.stairs = randomRoomTile(rooms[pick(others)]);
   // BFS で階段到達を確認
-  const dist = distField(map, st.x, st.y, null);
-  if (dist[sp.y * w + sp.x] < 0) return null;
+  const dist = distField(map, map.stairs.x, map.stairs.y, null);
+  if (dist[map.start.y * w + map.start.x] < 0) return null;
   return map;
 }
-function carveL(tiles, a, b) {
-  const ax = a.x + (a.w >> 1), ay = a.y + (a.h >> 1);
-  const bx = b.x + (b.w >> 1), by = b.y + (b.h >> 1);
-  const set = (x, y) => { const i = y * C.map.w + x; if (tiles[i] === T_WALL) tiles[i] = T_CORR; };
-  const hline = (x1, x2, y) => { for (let x = Math.min(x1, x2); x <= Math.max(x1, x2); x++) set(x, y); };
-  const vline = (y1, y2, x) => { for (let y = Math.min(y1, y2); y <= Math.max(y1, y2); y++) set(x, y); };
-  if (rand() < C.map.elbowFlip) { hline(ax, bx, ay); vline(ay, by, bx); }
-  else { vline(ay, by, ax); hline(ax, bx, by); }
+// 部屋 a の外周（角以外）から部屋 b の外周（角以外）まで、他の部屋とその外周を避けて4方向で掘る
+function connectRooms(m, a, b) {
+  const { w, h } = m;
+  const isDoor = (x, y, ri) => {
+    const r = m.rooms[ri];
+    if (m.ring[y * w + x] !== ri) return false;
+    const corner = (x === r.x - 1 || x === r.x + r.w) && (y === r.y - 1 || y === r.y + r.h);
+    return !corner;
+  };
+  const prev = new Int32Array(w * h).fill(-1);
+  const q = [];
+  const ra = m.rooms[a];
+  for (let y = ra.y - 1; y <= ra.y + ra.h; y++) for (let x = ra.x - 1; x <= ra.x + ra.w; x++)
+    if (isDoor(x, y, a)) { prev[y * w + x] = y * w + x; q.push(x, y); }
+  const O4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let goal = -1;
+  for (let qi = 0; qi < q.length && goal < 0; qi += 2) {
+    const x = q[qi], y = q[qi + 1];
+    const onDoorA = m.ring[y * w + x] === a;
+    for (const [dx, dy] of O4) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 1 || ny < 1 || nx >= w - 1 || ny >= h - 1) continue;
+      const ni = ny * w + nx;
+      if (prev[ni] >= 0) continue;
+      if (m.roomIdx[ni] >= 0) continue;
+      if (isDoor(nx, ny, b)) { if (onDoorA) continue; prev[ni] = y * w + x; goal = ni; break; }
+      if (m.ring[ni] >= 0) continue;
+      prev[ni] = y * w + x; q.push(nx, ny);
+    }
+  }
+  if (goal < 0) return false;
+  for (let i = goal; ; i = prev[i]) {
+    m.tiles[i] = T_CORR;
+    if (prev[i] === i) break;
+  }
+  return true;
 }
 function randomRoomTile(r) { return { x: randInt(r.x, r.x + r.w - 1), y: randInt(r.y, r.y + r.h - 1) }; }
 const walkable = (m, x, y) => x >= 0 && y >= 0 && x < m.w && y < m.h && m.tiles[y * m.w + x] !== T_WALL;
 const roomAt = (m, x, y) => m.roomIdx[y * m.w + x];
+// 1歩動けるか。斜めは両脇が壁でないときだけ（角をすり抜けない）
+const canStep = (m, x, y, dx, dy) => walkable(m, x + dx, y + dy) &&
+  (!dx || !dy || (walkable(m, x + dx, y) && walkable(m, x, y + dy)));
 // 目標から全域への歩数（8方向）。allow(x,y) で通行制限
 function distField(m, tx, ty, allow) {
   const dist = new Int16Array(m.w * m.h).fill(-1);
@@ -244,7 +280,7 @@ function distField(m, tx, ty, allow) {
     const x = q[qi], y = q[qi + 1], d = dist[y * m.w + x];
     for (const [dx, dy] of DIRS) {
       const nx = x + dx, ny = y + dy;
-      if (!walkable(m, nx, ny)) continue;
+      if (!canStep(m, x, y, dx, dy)) continue;
       if (allow && !allow(nx, ny)) continue;
       const ni = ny * m.w + nx;
       if (dist[ni] >= 0) continue;
@@ -262,14 +298,14 @@ function startRun(ids) {
   for (const id of ids) save.chars[id].status = 'party';
   writeSave();
   run = {
-    floor: 0, turn: 0, active: 0, bag: [], sel: -1, log: [], over: false,
+    floor: 0, turn: 0, active: 0, bag: [], sel: -1, log: [], over: false, face: [0, 1],
     lost: new Set(),
     party: ids.map(id => ({ id, hp: C.player.hpMax, w: save.chars[id].wildMin, high: false })),
   };
   nextFloor();
   showScreen('run');
   log(`${active().def.name}たちは檻の中へ降りた。`, 'info');
-  log('敵のいる方向へ動くと攻撃する。', 'info');
+  log('方向キーで向きを変え、「攻撃」で向いている方を殴る。', 'info');
   render();
 }
 function active() {
@@ -400,9 +436,9 @@ function act(fn) {
 }
 function tryMove(dx, dy) {
   const nx = run.px + dx, ny = run.py + dy;
-  const e = enemyAt(nx, ny);
-  if (e) { playerAttack(e); return true; }
-  if (!walkable(run.map, nx, ny)) return false;
+  run.face = [dx, dy];
+  // 敵や壁の方へは向くだけ（ターンを使わない）
+  if (enemyAt(nx, ny) || !canStep(run.map, run.px, run.py, dx, dy)) return false;
   run.px = nx; run.py = ny;
   const it = itemAt(nx, ny);
   if (it) {
@@ -417,6 +453,13 @@ function tryMove(dx, dy) {
     nextFloor();
     return 'descended';
   }
+  return true;
+}
+function attackCmd() {
+  const [dx, dy] = run.face;
+  const e = enemyAt(run.px + dx, run.py + dy);
+  if (e && canReach(run.px, run.py, e.x, e.y)) playerAttack(e);
+  else log(`${active().def.name}の攻撃は空を切った。`);
   return true;
 }
 function playerAttack(e) {
@@ -471,7 +514,11 @@ function eat() {
   return true;
 }
 function adjacentFeral() {
-  return run.enemies.find(e => e.type === 'feral' && cheb(e.x, e.y, run.px, run.py) <= 1);
+  return run.enemies.find(e => e.type === 'feral' && canReach(e.x, e.y, run.px, run.py));
+}
+// 隣接していて、角に阻まれずに手が届くか
+function canReach(ax, ay, bx, by) {
+  return cheb(ax, ay, bx, by) === 1 && canStep(run.map, ax, ay, bx - ax, by - ay);
 }
 function give() {
   const e = adjacentFeral();
@@ -539,21 +586,22 @@ function stepToward(e, tx, ty, allow) {
   if (bd < 0) bd = Infinity;
   for (const [dx, dy] of DIRS) {
     const nx = e.x + dx, ny = e.y + dy;
-    if (!walkable(m, nx, ny) || occupied(nx, ny)) continue;
+    if (!canStep(m, e.x, e.y, dx, dy) || occupied(nx, ny)) continue;
+    if (allow && !allow(nx, ny)) continue;
     const d = dist[ny * m.w + nx];
     if (d >= 0 && d < bd) { bd = d; best = [nx, ny]; }
   }
   if (best) { e.x = best[0]; e.y = best[1]; }
 }
 function stepRandom(e) {
-  const opts = DIRS.map(([dx, dy]) => [e.x + dx, e.y + dy]).filter(([x, y]) => walkable(run.map, x, y) && !occupied(x, y));
+  const opts = DIRS.filter(([dx, dy]) => canStep(run.map, e.x, e.y, dx, dy) && !occupied(e.x + dx, e.y + dy)).map(([dx, dy]) => [e.x + dx, e.y + dy]);
   if (opts.length) { const [x, y] = pick(opts); e.x = x; e.y = y; }
 }
 function stepAway(e) {
   let best = null, bd = cheb(e.x, e.y, run.px, run.py);
   for (const [dx, dy] of DIRS) {
     const nx = e.x + dx, ny = e.y + dy;
-    if (!walkable(run.map, nx, ny) || occupied(nx, ny)) continue;
+    if (!canStep(run.map, e.x, e.y, dx, dy) || occupied(nx, ny)) continue;
     const d = cheb(nx, ny, run.px, run.py);
     if (d > bd) { bd = d; best = [nx, ny]; }
   }
@@ -590,8 +638,8 @@ function enemyAct(e) {
       return;
     }
   }
-  const adj = cheb(e.x, e.y, run.px, run.py) <= 1;
-  if (adj) {
+  if (enemySees(e)) e.alert = true;
+  if (canReach(e.x, e.y, run.px, run.py)) {
     if (e.type === 'poacher' && run.bag.length && rand() < C.enemies.poacher.stealRate) {
       const i = Math.floor(rand() * run.bag.length);
       const k = run.bag.splice(i, 1)[0]; fixSel();
@@ -607,7 +655,8 @@ function enemyAct(e) {
     if (enemySees(e)) stepToward(e, run.px, run.py, (x, y) => roomAt(run.map, x, y) === e.room || (x === run.px && y === run.py));
     return;
   }
-  if (enemySees(e)) stepToward(e, run.px, run.py, null);
+  // 一度見つけたら見失わない
+  if (e.alert) stepToward(e, run.px, run.py, null);
   else stepRandom(e);
 }
 
@@ -730,6 +779,16 @@ function drawMap() {
     ctx.fillStyle = a.def.color;
     ctx.fillRect(run.px * tile + 0.5, run.py * tile + 0.5, tile - 1, tile - 1);
     glyphAt(run.px, run.py, a.def.glyph, C.colors.bg);
+    // 向きの印（タイルの縁に小さな三角）
+    const [fx, fy] = run.face, len = Math.hypot(fx, fy);
+    const ux = fx / len, uy = fy / len, cxp = (run.px + 0.5) * tile, cyp = (run.py + 0.5) * tile;
+    const tipR = tile * C.view.faceTip, baseR = tile * C.view.faceBase, half = tile * C.view.faceHalf;
+    ctx.fillStyle = C.colors.face;
+    ctx.beginPath();
+    ctx.moveTo(cxp + ux * tipR, cyp + uy * tipR);
+    ctx.lineTo(cxp + ux * baseR - uy * half, cyp + uy * baseR + ux * half);
+    ctx.lineTo(cxp + ux * baseR + uy * half, cyp + uy * baseR - ux * half);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -848,12 +907,12 @@ function renderBase(autofill = true) {
 // ============================================================
 // input
 // ============================================================
-const PAD = [[-1,-1,'↖'],[0,-1,'↑'],[1,-1,'↗'],[-1,0,'←'],[0,0,'待つ'],[1,0,'→'],[-1,1,'↙'],[0,1,'↓'],[1,1,'↘']];
-$('pad').innerHTML = PAD.map(([dx, dy, l], i) => `<button data-p="${i}" class="${dx || dy ? '' : 'wait'}">${l}</button>`).join('');
+const PAD = [[-1,-1,'↖'],[0,-1,'↑'],[1,-1,'↗'],[-1,0,'←'],[0,0,'攻撃'],[1,0,'→'],[-1,1,'↙'],[0,1,'↓'],[1,1,'↘']];
+$('pad').innerHTML = PAD.map(([dx, dy, l], i) => `<button data-p="${i}" class="${dx || dy ? '' : 'atk'}">${l}</button>`).join('');
 $('pad').addEventListener('click', ev => {
   const b = ev.target.closest('[data-p]'); if (!b) return;
   const [dx, dy] = PAD[+b.dataset.p];
-  act(() => (dx || dy) ? tryMove(dx, dy) : true);
+  act(() => (dx || dy) ? tryMove(dx, dy) : attackCmd());
 });
 $('party').addEventListener('click', ev => {
   const b = ev.target.closest('[data-i]'); if (!b) return;
@@ -865,6 +924,7 @@ $('bag').addEventListener('click', ev => {
   run.sel = run.sel === i ? -1 : i;
   render();
 });
+$('bWait').onclick = () => act(() => true);
 $('bSwap').onclick = () => act(swapNext);
 $('bEat').onclick = () => act(eat);
 $('bGive').onclick = () => act(give);
@@ -878,7 +938,8 @@ document.addEventListener('keydown', ev => {
   if (!run || $('run').classList.contains('hidden')) return;
   const d = KEYMAP[ev.key];
   if (d) { ev.preventDefault(); act(() => (d[0] || d[1]) ? tryMove(d[0], d[1]) : true); return; }
-  if (ev.key === 's') act(swapNext);
+  if (ev.key === 'a' || ev.key === ' ' || ev.key === 'Enter') { ev.preventDefault(); act(attackCmd); }
+  else if (ev.key === 's') act(swapNext);
   else if (ev.key === 'i') { if (run.bag.length) { run.sel = (run.sel + 1) % run.bag.length; render(); } }
   else if (ev.key === 'e') act(eat);
   else if (ev.key === 'g') act(give);
